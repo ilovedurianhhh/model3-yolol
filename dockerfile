@@ -1,52 +1,46 @@
-# 使用官方Python 3.10镜像作为基础镜像
+# 第一阶段：构建环境
+FROM python:3.10-slim as builder
+
+# 设置环境变量
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# 安装构建依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# 复制并安装Python依赖
+COPY requirements.txt /tmp/
+RUN pip install --user --no-warn-script-location -r /tmp/requirements.txt
+
+# 第二阶段：运行环境
 FROM python:3.10-slim
+
+# 设置环境变量
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+ENV PATH=/root/.local/bin:$PATH
+
+# 安装运行时依赖（最小化）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libglib2.0-0 \
+    libgl1-mesa-glx \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# 从构建阶段复制Python包
+COPY --from=builder /root/.local /root/.local
 
 # 设置工作目录
 WORKDIR /app
 
-# 设置环境变量避免交互式安装
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app
-
-# 更换为国内镜像源（可选，如果网络慢的话）
-# RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources
-
-# 安装系统依赖，合并RUN命令减少层数
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    libgomp1 \
-    libgtk-3-0 \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    libfontconfig1 \
-    libxss1 \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
-# 升级pip并设置国内镜像源
-RUN pip install --no-cache-dir --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple/
-
-# 复制requirements.txt文件
-COPY requirements.txt .
-
-# 安装Python依赖，使用国内镜像源加速
-RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple/
-
-# 复制项目文件
+# 复制应用代码
 COPY . .
-
-# 确保模型文件存在
-RUN if [ ! -f "yolo11l-pose.pt" ]; then echo "Warning: Model file yolo11l-pose.pt not found"; fi
-
-# 创建输出目录
-RUN mkdir -p /app/output
 
 # 暴露端口
 EXPOSE 8000
 
 # 启动命令
-CMD ["uvicorn", "cloudpose_server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "cloudpose_server:app", "--host", "0.0.0.0", "--port", "8000"]
