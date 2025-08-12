@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudpose-deployment
+  labels:
+    app: cloudpose
+spec:
+  replicas: 1  # 初始副本数，可以通过kubectl scale调整
+  selector:
+    matchLabels:
+      app: cloudpose
+  template:
+    metadata:
+      labels:
+        app: cloudpose
+    spec:
+      imagePullSecrets:  # 移动到这里，与 containers 同级
+      - name: acr-secret
+      containers:
+      - name: cloudpose
+        image: crpi-v4t6gnrk4n1rvc5u.cn-hongkong.personal.cr.aliyuncs.com/lsmcloudpose/cloudpose:v4.0  # 修改为ACR镜像地址
+        imagePullPolicy: Always  # 修改为Always，从远程仓库拉取
+        ports:
+        - containerPort: 60000
+        resources:
+          requests:
+            cpu: "0.5"
+            memory: "1Gi"
+          limits:
+            cpu: "0.5"
+            memory: "1Gi"
+        env:
+        - name: PORT
+          value: "60000"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 60000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 60000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        # 删除这里的 imagePullSecrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudpose-service
+  labels:
+    app: cloudpose
+spec:
+  selector:
+    app: cloudpose
+  type: NodePort
+  ports:
+  - port: 60000
+    targetPort: 60000
+    nodePort: 30000  # 外部访问端口
+    protocol: TCP
+    name: http
