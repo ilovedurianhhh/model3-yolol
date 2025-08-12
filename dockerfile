@@ -1,4 +1,4 @@
-FROM python:3.8-slim
+FROM python:3.10-slim
 
 # 设置工作目录
 WORKDIR /app
@@ -11,13 +11,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # 安装系统依赖
 RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    libgomp1 \
-    libglib2.0-0 \
     libgl1-mesa-glx \
-    wget \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # 升级pip
@@ -27,25 +22,16 @@ RUN pip install --no-cache-dir --upgrade pip
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 复制应用代码
-COPY main.py .
-COPY pose-detection.py .
-
-# 下载YOLO模型文件（如果不存在）
-RUN python -c "from ultralytics import YOLO; YOLO('yolo11l-pose.pt')" || \
-    wget -O yolo11l-pose.pt https://github.com/ultralytics/assets/releases/download/v0.0.0/yolo11l-pose.pt
-
-# 创建非root用户
-RUN groupadd -r appuser && useradd -r -g appuser appuser
-RUN chown -R appuser:appuser /app
-USER appuser
+# 复制应用代码和模型文件
+COPY cloudpose_server.py .
+COPY yolo11l-pose.pt .
 
 # 暴露端口
-EXPOSE 60000
+EXPOSE 8000
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:60000/health')" || exit 1
+    CMD python -c "import requests; requests.get('http://localhost:8000/health')" || exit 1
 
 # 启动命令
-CMD ["python", "main.py"]
+CMD ["uvicorn", "cloudpose_server:app", "--host", "0.0.0.0", "--port", "8000"]
